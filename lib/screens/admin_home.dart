@@ -28,12 +28,12 @@ class AdminHomePage extends StatelessWidget {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => StockManagerPage()),
+                  MaterialPageRoute(builder: (_) => StockManager()),
                 );
               },
-              icon: const Icon(Icons.inventory),
+              icon: const Icon(Icons.supervised_user_circle),
               label: const Text("Stock Manager"),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             ),
           ],
         ),

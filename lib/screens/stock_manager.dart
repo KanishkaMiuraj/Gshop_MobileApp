@@ -38,7 +38,6 @@ class _StockManagerState extends State<StockManager> {
             .where((product) => product['category_id'].toString() == categoryId)
             .toList();
 
-        // Init expansion state and modified state
         _expandedCategories[categoryId] = false;
 
         for (var product in _productsByCategory[categoryId]!) {
@@ -72,65 +71,73 @@ class _StockManagerState extends State<StockManager> {
     );
   }
 
-  Widget _buildProductTile(Map<String, dynamic> product) {
+  Widget _buildProductTile(Map<String, dynamic> product, String unit) {
     final id = product['id'].toString();
     final name = product['name'];
     final quantity = _modifiedQuantities[id] ?? 0;
     final imageUrl = product['image_url'] ?? '';
 
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => UpdateProductPage(productId: id),
-          ),
-        ).then((_) {
-          _fetchCategoriesAndProducts(); // Refresh after update
-        });
-      },
-      child: Card(
-        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 25,
-                backgroundImage: imageUrl.isNotEmpty
-                    ? NetworkImage(imageUrl)
-                    : const AssetImage('assets/placeholder.png') as ImageProvider,
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        leading: CircleAvatar(
+          radius: 25,
+          backgroundImage: imageUrl.isNotEmpty
+              ? NetworkImage(imageUrl)
+              : const AssetImage('assets/placeholder.png') as ImageProvider,
+        ),
+        title: Text(name, style: const TextStyle(fontSize: 16)),
+        subtitle: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Qty: "),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {}, // absorb taps, prevent expansion toggle on quantity change
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: () {
+                      if (quantity > 0) {
+                        _updateQuantity(id, quantity - 1);
+                      }
+                    },
+                  ),
+                  Text(
+                    quantity.toStringAsFixed(1) +
+                        (unit.isNotEmpty ? ' $unit' : ''),
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: () {
+                      _updateQuantity(id, quantity + 1);
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(name, style: const TextStyle(fontSize: 16)),
-              ),
-              const SizedBox(width: 10),
-              const Text("Qty: "),
-              IconButton(
-                icon: const Icon(Icons.remove_circle_outline),
-                onPressed: () {
-                  if (quantity > 0) {
-                    _updateQuantity(id, quantity - 1);
-                  }
-                },
-              ),
-              Text(quantity.toStringAsFixed(1),
-                  style: const TextStyle(fontSize: 16)),
-              IconButton(
-                icon: const Icon(Icons.add_circle_outline),
-                onPressed: () {
-                  _updateQuantity(id, quantity + 1);
-                },
-              ),
-              if (_showUpdateButton[id] == true)
-                ElevatedButton(
+            ),
+            if (_showUpdateButton[id] == true)
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: ElevatedButton(
                   onPressed: () => _saveQuantity(id),
                   child: const Text('Update'),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UpdateProductPage(productId: id),
+            ),
+          );
+          _fetchCategoriesAndProducts(); // Refresh after update
+        },
       ),
     );
   }
@@ -138,6 +145,7 @@ class _StockManagerState extends State<StockManager> {
   Widget _buildCategorySection(Map<String, dynamic> category) {
     final categoryId = category['id'].toString();
     final categoryName = category['name'];
+    final unit = (category['units'] ?? '').toString(); // get unit for category
 
     return ExpansionTile(
       title: Text(
@@ -151,7 +159,7 @@ class _StockManagerState extends State<StockManager> {
         });
       },
       children: _productsByCategory[categoryId]!
-          .map((product) => _buildProductTile(product))
+          .map((product) => _buildProductTile(product, unit))
           .toList(),
     );
   }
