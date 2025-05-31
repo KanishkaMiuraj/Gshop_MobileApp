@@ -1,9 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path/path.dart' as p;
-import 'package:mime/mime.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 class UpdateProductPage extends StatefulWidget {
   final String productId;
@@ -15,21 +14,21 @@ class UpdateProductPage extends StatefulWidget {
 }
 
 class _UpdateProductPageState extends State<UpdateProductPage> {
-  final supabase = Supabase.instance.client;
   final _formKey = GlobalKey<FormState>();
 
-  final _nameController = TextEditingController();
-  final _descController = TextEditingController();
-  final _priceController = TextEditingController();
-  final _quantityController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _descController = TextEditingController();
+  final TextEditingController _priceController = TextEditingController();
+  final TextEditingController _quantityController = TextEditingController();
 
-  String? _selectedCategoryId;
-  String? _selectedUnit;
-  String? _imageUrl;
   File? _pickedImage;
+  String? _imageUrl;
 
   List<Map<String, dynamic>> _categories = [];
-  List<String> _unitOptions = ['Kg', 'pcs', 'ml', 'l'];
+  String? _selectedCategoryId;
+  String? _selectedUnit;
+
+  final SupabaseClient supabase = Supabase.instance.client;
 
   @override
   void initState() {
@@ -38,180 +37,179 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
   }
 
   Future<void> _fetchCategoriesAndProduct() async {
-    final categoryData = await supabase.from('categories').select();
     final productData = await supabase
         .from('products')
         .select()
         .eq('id', widget.productId)
         .single();
 
-    setState(() {
-      _categories = List<Map<String, dynamic>>.from(categoryData);
+    final categoryData = await supabase.from('categories').select();
 
+    setState(() {
       _nameController.text = productData['name'] ?? '';
       _descController.text = productData['description'] ?? '';
-      _priceController.text = productData['price'].toString();
-      _quantityController.text = productData['quantity'].toString();
-      _selectedUnit = productData['unit'] ?? '';
-      _selectedCategoryId = productData['category_id'].toString();
+      _priceController.text = productData['price']?.toString() ?? '';
+      _quantityController.text = productData['quantity']?.toString() ?? '';
       _imageUrl = productData['image_url'];
+      _selectedCategoryId = productData['category_id']?.toString();
+
+      _categories = List<Map<String, dynamic>>.from(categoryData);
+
+      final selectedCategory = _categories.firstWhere(
+            (cat) => cat['id'].toString() == _selectedCategoryId,
+        orElse: () => {},
+      );
+      _selectedUnit = selectedCategory['units'];
     });
   }
 
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) {
+    final pickedImage =
+    await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (pickedImage != null) {
       setState(() {
-        _pickedImage = File(picked.path);
+        _pickedImage = File(pickedImage.path);
       });
     }
   }
 
   Future<String?> _uploadImage(File file) async {
-    final fileExt = p.extension(file.path);
-    final fileName = '${DateTime.now().millisecondsSinceEpoch}$fileExt';
-    final filePath = 'product_images/$fileName';
+    final fileExt = file.path.split('.').last;
+    final fileName = const Uuid().v4();
+    final filePath = 'public/$fileName.$fileExt';
 
     final bytes = await file.readAsBytes();
-    final contentType = lookupMimeType(file.path);
 
     final response = await supabase.storage
         .from('product_images')
-        .uploadBinary(filePath, bytes, fileOptions: FileOptions(contentType: contentType));
+        .uploadBinary(filePath, bytes);
 
-    if (response.isEmpty) {
-      final imageUrl =
-      supabase.storage.from('product_images').getPublicUrl(filePath);
+    if (response.isNotEmpty) {
+      final imageUrl = supabase.storage
+          .from('product_images')
+          .getPublicUrl(filePath);
       return imageUrl;
+    } else {
+      return null;
     }
-    return null;
   }
 
   Future<void> _updateProduct() async {
     if (_formKey.currentState!.validate()) {
-      String? newImageUrl = _imageUrl;
+      try {
+        String? newImageUrl = _imageUrl;
 
-      if (_pickedImage != null) {
-        newImageUrl = await _uploadImage(_pickedImage!);
+        if (_pickedImage != null) {
+          newImageUrl = await _uploadImage(_pickedImage!);
+        }
+
+        final updateData = {
+          'name': _nameController.text.trim(),
+          'description': _descController.text.trim(),
+          'price': double.tryParse(_priceController.text.trim()) ?? 0,
+          'quantity': double.tryParse(_quantityController.text.trim()) ?? 0,
+          'image_url': newImageUrl,
+          if (_selectedCategoryId != null) 'category_id': _selectedCategoryId,
+        };
+
+        await supabase
+            .from('products')
+            .update(updateData)
+            .eq('id', widget.productId);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Product updated successfully')),
+        );
+
+        Navigator.pop(context);
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Update failed: $e')),
+        );
       }
-
-      await supabase.from('products').update({
-        'name': _nameController.text.trim(),
-        'description': _descController.text.trim(),
-        'price': double.parse(_priceController.text.trim()),
-        'quantity': double.parse(_quantityController.text.trim()),
-        'unit': _selectedUnit,
-        'category_id': int.parse(_selectedCategoryId!),
-        'image_url': newImageUrl,
-      }).eq('id', widget.productId);
-
-      // Update the unit in the categories table
-      await supabase.from('categories').update({
-        'units': _selectedUnit,
-      }).eq('id', int.parse(_selectedCategoryId!));
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Product updated successfully')),
-      );
-
-      Navigator.pop(context);
     }
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _descController.dispose();
-    _priceController.dispose();
-    _quantityController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Update Product")),
-      body: _selectedCategoryId == null
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
+      appBar: AppBar(title: const Text('Update Product')),
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
-          child: ListView(
+          child: Column(
             children: [
-              const SizedBox(height: 10),
-              GestureDetector(
-                onTap: _pickImage,
-                child: Center(
-                  child: CircleAvatar(
-                    radius: 50,
-                    backgroundImage: _pickedImage != null
-                        ? FileImage(_pickedImage!)
-                        : (_imageUrl != null
-                        ? NetworkImage(_imageUrl!)
-                        : const AssetImage('assets/placeholder.png')) as ImageProvider,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Product Name'),
-                validator: (value) => value!.isEmpty ? 'Required' : null,
+                validator: (value) =>
+                value!.isEmpty ? 'Enter product name' : null,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _descController,
+                decoration:
+                const InputDecoration(labelText: 'Product Description'),
+                validator: (value) =>
+                value!.isEmpty ? 'Enter product description' : null,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _priceController,
+                keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Price'),
+                validator: (value) =>
+                value!.isEmpty ? 'Enter price' : null,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _quantityController,
+                keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Quantity'),
+                validator: (value) =>
+                value!.isEmpty ? 'Enter quantity' : null,
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 value: _selectedCategoryId,
-                items: _categories.map((cat) {
+                decoration:
+                const InputDecoration(labelText: 'Select Category'),
+                items: _categories.map((category) {
                   return DropdownMenuItem<String>(
-                    value: cat['id'].toString(),
-                    child: Text(cat['name']),
+                    value: category['id'].toString(),
+                    child: Text(category['name']),
                   );
                 }).toList(),
                 onChanged: (value) {
                   setState(() {
                     _selectedCategoryId = value;
+                    final selectedCategory = _categories.firstWhere(
+                          (cat) => cat['id'].toString() == value,
+                      orElse: () => {},
+                    );
+                    _selectedUnit = selectedCategory['units'];
                   });
                 },
-                decoration: const InputDecoration(labelText: 'Category'),
               ),
               const SizedBox(height: 10),
               TextFormField(
-                controller: _descController,
-                decoration: const InputDecoration(labelText: 'Description'),
-                maxLines: 2,
+                enabled: false,
+                initialValue: _selectedUnit ?? '',
+                decoration:
+                const InputDecoration(labelText: 'Unit (from category)'),
               ),
               const SizedBox(height: 10),
-              TextFormField(
-                controller: _priceController,
-                decoration: const InputDecoration(labelText: 'Price'),
-                keyboardType: TextInputType.number,
-                validator: (value) => value!.isEmpty ? 'Required' : null,
-              ),
+              _imageUrl != null
+                  ? Image.network(_imageUrl!, height: 100)
+                  : const SizedBox(),
               const SizedBox(height: 10),
-              TextFormField(
-                controller: _quantityController,
-                decoration: const InputDecoration(labelText: 'Quantity'),
-                keyboardType: TextInputType.number,
-                validator: (value) => value!.isEmpty ? 'Required' : null,
-              ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                value: _selectedUnit,
-                items: _unitOptions.map((unit) {
-                  return DropdownMenuItem<String>(
-                    value: unit,
-                    child: Text(unit),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _selectedUnit = value;
-                  });
-                },
-                decoration: const InputDecoration(labelText: 'Unit'),
-                validator: (value) => value == null || value.isEmpty ? 'Required' : null,
+              ElevatedButton.icon(
+                onPressed: _pickImage,
+                icon: const Icon(Icons.image),
+                label: const Text('Pick New Image'),
               ),
               const SizedBox(height: 20),
               ElevatedButton(
