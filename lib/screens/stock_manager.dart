@@ -124,7 +124,7 @@ class _StockManagerState extends State<StockManager> {
                 padding: const EdgeInsets.only(left: 8.0),
                 child: ElevatedButton(
                   onPressed: () => _saveQuantity(id),
-                  child: const Text('✅'),
+
                 ),
               ),
           ],
