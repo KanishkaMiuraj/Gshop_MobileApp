@@ -22,13 +22,14 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
   final _descController = TextEditingController();
   final _priceController = TextEditingController();
   final _quantityController = TextEditingController();
-  final _unitController = TextEditingController();
 
   String? _selectedCategoryId;
+  String? _selectedUnit;
   String? _imageUrl;
   File? _pickedImage;
 
   List<Map<String, dynamic>> _categories = [];
+  List<String> _unitOptions = ['Kg', 'pcs', 'ml', 'l'];
 
   @override
   void initState() {
@@ -51,7 +52,7 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
       _descController.text = productData['description'] ?? '';
       _priceController.text = productData['price'].toString();
       _quantityController.text = productData['quantity'].toString();
-      _unitController.text = productData['unit'] ?? '';
+      _selectedUnit = productData['unit'] ?? '';
       _selectedCategoryId = productData['category_id'].toString();
       _imageUrl = productData['image_url'];
     });
@@ -100,10 +101,15 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
         'description': _descController.text.trim(),
         'price': double.parse(_priceController.text.trim()),
         'quantity': double.parse(_quantityController.text.trim()),
-        'unit': _unitController.text.trim(),
+        'unit': _selectedUnit,
         'category_id': int.parse(_selectedCategoryId!),
         'image_url': newImageUrl,
       }).eq('id', widget.productId);
+
+      // Update the unit in the categories table
+      await supabase.from('categories').update({
+        'units': _selectedUnit,
+      }).eq('id', int.parse(_selectedCategoryId!));
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Product updated successfully')),
@@ -119,7 +125,6 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
     _descController.dispose();
     _priceController.dispose();
     _quantityController.dispose();
-    _unitController.dispose();
     super.dispose();
   }
 
@@ -192,10 +197,21 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
                 validator: (value) => value!.isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 10),
-              TextFormField(
-                controller: _unitController,
-                decoration: const InputDecoration(labelText: 'Unit (e.g., Kg, pcs)'),
-                validator: (value) => value!.isEmpty ? 'Required' : null,
+              DropdownButtonFormField<String>(
+                value: _selectedUnit,
+                items: _unitOptions.map((unit) {
+                  return DropdownMenuItem<String>(
+                    value: unit,
+                    child: Text(unit),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedUnit = value;
+                  });
+                },
+                decoration: const InputDecoration(labelText: 'Unit'),
+                validator: (value) => value == null || value.isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 20),
               ElevatedButton(
