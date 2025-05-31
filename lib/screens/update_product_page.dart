@@ -26,7 +26,6 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
 
   List<Map<String, dynamic>> _categories = [];
   String? _selectedCategoryId;
-  String? _selectedUnit;
 
   final SupabaseClient supabase = Supabase.instance.client;
 
@@ -52,14 +51,7 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
       _quantityController.text = productData['quantity']?.toString() ?? '';
       _imageUrl = productData['image_url'];
       _selectedCategoryId = productData['category_id']?.toString();
-
       _categories = List<Map<String, dynamic>>.from(categoryData);
-
-      final selectedCategory = _categories.firstWhere(
-            (cat) => cat['id'].toString() == _selectedCategoryId,
-        orElse: () => {},
-      );
-      _selectedUnit = selectedCategory['units'];
     });
   }
 
@@ -85,9 +77,8 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
         .uploadBinary(filePath, bytes);
 
     if (response.isNotEmpty) {
-      final imageUrl = supabase.storage
-          .from('product_images')
-          .getPublicUrl(filePath);
+      final imageUrl =
+      supabase.storage.from('product_images').getPublicUrl(filePath);
       return imageUrl;
     } else {
       return null;
@@ -139,7 +130,26 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
         child: Form(
           key: _formKey,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Center(
+                child: GestureDetector(
+                  onTap: _pickImage,
+                  child: _pickedImage != null
+                      ? Image.file(_pickedImage!, height: 120)
+                      : _imageUrl != null
+                      ? Image.network(_imageUrl!, height: 120)
+                      : Container(
+                    height: 120,
+                    width: 120,
+                    color: Colors.grey[300],
+                    child: const Icon(Icons.add_a_photo, size: 40),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Product Name
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Product Name'),
@@ -147,6 +157,8 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
                 value!.isEmpty ? 'Enter product name' : null,
               ),
               const SizedBox(height: 10),
+
+              // Description
               TextFormField(
                 controller: _descController,
                 decoration:
@@ -155,6 +167,8 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
                 value!.isEmpty ? 'Enter product description' : null,
               ),
               const SizedBox(height: 10),
+
+              // Price
               TextFormField(
                 controller: _priceController,
                 keyboardType:
@@ -164,6 +178,8 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
                 value!.isEmpty ? 'Enter price' : null,
               ),
               const SizedBox(height: 10),
+
+              // Quantity
               TextFormField(
                 controller: _quantityController,
                 keyboardType:
@@ -173,6 +189,8 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
                 value!.isEmpty ? 'Enter quantity' : null,
               ),
               const SizedBox(height: 10),
+
+              // Category Dropdown
               DropdownButtonFormField<String>(
                 value: _selectedCategoryId,
                 decoration:
@@ -186,32 +204,13 @@ class _UpdateProductPageState extends State<UpdateProductPage> {
                 onChanged: (value) {
                   setState(() {
                     _selectedCategoryId = value;
-                    final selectedCategory = _categories.firstWhere(
-                          (cat) => cat['id'].toString() == value,
-                      orElse: () => {},
-                    );
-                    _selectedUnit = selectedCategory['units'];
                   });
                 },
               ),
-              const SizedBox(height: 10),
-              TextFormField(
-                enabled: false,
-                initialValue: _selectedUnit ?? '',
-                decoration:
-                const InputDecoration(labelText: 'Unit (from category)'),
-              ),
-              const SizedBox(height: 10),
-              _imageUrl != null
-                  ? Image.network(_imageUrl!, height: 100)
-                  : const SizedBox(),
-              const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: _pickImage,
-                icon: const Icon(Icons.image),
-                label: const Text('Pick New Image'),
-              ),
-              const SizedBox(height: 20),
+
+              const SizedBox(height: 30),
+
+              // Update Button at Bottom
               ElevatedButton(
                 onPressed: _updateProduct,
                 child: const Text('Update Product'),
